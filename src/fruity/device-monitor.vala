@@ -504,7 +504,7 @@ namespace Frida.Fruity {
 					return new TcpChannel () { stream = stream, kind = TUNNEL };
 				} catch (Error e) {
 					stderr.printf ("[FRIDA-DEVICE] Tunnel connection failed: %s\n", e.message);
-					if (e is Error.SERVER_NOT_RUNNING)
+					if (e is Error.SERVER_NOT_RUNNING || e is Error.TRANSPORT)
 						pending_error = e;
 					else
 						throw e;

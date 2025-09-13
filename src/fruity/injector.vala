@@ -285,8 +285,8 @@ namespace Frida.Fruity.Injector {
 				uint64 address = buffer.read_pointer (offset);
 				uint64 rebased_address = address + rebase.slide;
 				buffer.write_pointer (offset, rebased_address);
-				stderr.printf ("[FRIDA-INJECTOR] Rebased address at offset 0x%zx: 0x%llx -> 0x%llx\n", 
-					offset, address, rebased_address);
+				//  stderr.printf ("[FRIDA-INJECTOR] Rebased address at offset 0x%zx: 0x%llx -> 0x%llx\n", 
+				//  	offset, address, rebased_address);
 
 				return true;
 			});

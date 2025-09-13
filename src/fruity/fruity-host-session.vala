@@ -12,30 +12,38 @@ namespace Frida {
 		}
 
 		public async void start (Cancellable? cancellable) throws IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Starting FruityHostSessionBackend\n");
 			yield device_monitor.start (cancellable);
+			stderr.printf ("[FRIDA-HOST-SESSION] FruityHostSessionBackend started successfully\n");
 		}
 
 		public async void stop (Cancellable? cancellable) throws IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Stopping FruityHostSessionBackend\n");
 			io_cancellable.cancel ();
 
 			yield device_monitor.stop (cancellable);
 
+			stderr.printf ("[FRIDA-HOST-SESSION] Closing %u providers\n", providers.size);
 			foreach (var provider in providers.values) {
 				provider_unavailable (provider);
 				yield provider.close (cancellable);
 			}
 			providers.clear ();
+			stderr.printf ("[FRIDA-HOST-SESSION] FruityHostSessionBackend stopped successfully\n");
 		}
 
 		private void on_device_attached (Fruity.Device device) {
+			stderr.printf ("[FRIDA-HOST-SESSION] Device attached: %s (UDID: %s)\n", device.name, device.udid);
 			var provider = new FruityHostSessionProvider (device);
 			providers[device] = provider;
 			provider_available (provider);
 		}
 
 		private void on_device_detached (Fruity.Device device) {
+			stderr.printf ("[FRIDA-HOST-SESSION] Device detached: %s (UDID: %s)\n", device.name, device.udid);
 			FruityHostSessionProvider provider;
 			if (providers.unset (device, out provider)) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Removing provider for detached device\n");
 				provider_unavailable (provider);
 				provider.close.begin (io_cancellable);
 			}
@@ -77,13 +85,19 @@ namespace Frida {
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Closing provider for device: %s (UDID: %s)\n", device.name, device.udid);
 			yield Fruity.DTXConnection.close_all (device, cancellable);
+			stderr.printf ("[FRIDA-HOST-SESSION] Provider closed successfully\n");
 		}
 
 		public async HostSession create (HostSessionOptions? options, Cancellable? cancellable) throws Error, IOError {
-			if (host_session != null)
+			stderr.printf ("[FRIDA-HOST-SESSION] Creating host session for device: %s (UDID: %s)\n", device.name, device.udid);
+			if (host_session != null) {
+				stderr.printf ("[FRIDA-HOST-SESSION] ERROR: Host session already exists\n");
 				throw new Error.INVALID_OPERATION ("Already created");
+			}
 
+			stderr.printf ("[FRIDA-HOST-SESSION] Initializing new host session\n");
 			host_session = new FruityHostSession (device);
 			host_session.agent_session_detached.connect (on_agent_session_detached);
 
@@ -91,6 +105,7 @@ namespace Frida {
 		}
 
 		public async void destroy (HostSession session, Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Destroying host session for device: %s\n", device.name);
 			if (session != host_session)
 				throw new Error.INVALID_ARGUMENT ("Invalid host session");
 
@@ -98,6 +113,7 @@ namespace Frida {
 
 			yield host_session.close (cancellable);
 			host_session = null;
+			stderr.printf ("[FRIDA-HOST-SESSION] Host session destroyed successfully\n");
 		}
 
 		public async AgentSession link_agent_session (HostSession host_session, AgentSessionId id, AgentMessageSink sink,
@@ -247,15 +263,21 @@ namespace Frida {
 		}
 
 		public async HashTable<string, Variant> query_system_parameters (Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Querying system parameters for device: %s\n", device.name);
 			var server = yield try_get_remote_server (cancellable);
 			if (server != null && server.flavor == REGULAR) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Using remote server for system parameters\n");
 				try {
-					return yield server.session.query_system_parameters (cancellable);
+					var params = yield server.session.query_system_parameters (cancellable);
+					stderr.printf ("[FRIDA-HOST-SESSION] System parameters retrieved from remote server\n");
+					return params;
 				} catch (GLib.Error e) {
+					stderr.printf ("[FRIDA-HOST-SESSION] Error querying remote system parameters: %s\n", e.message);
 					throw_dbus_error (e);
 				}
 			}
 
+			stderr.printf ("[FRIDA-HOST-SESSION] Using lockdown client for system parameters\n");
 			var parameters = new HashTable<string, Variant> (str_hash, str_equal);
 
 			try {
@@ -707,19 +729,25 @@ namespace Frida {
 		}
 
 		public async void enable_spawn_gating (Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Enabling spawn gating for device: %s\n", device.name);
 			var server = yield get_remote_server (cancellable);
 			try {
 				yield server.session.enable_spawn_gating (cancellable);
+				stderr.printf ("[FRIDA-HOST-SESSION] Spawn gating enabled successfully\n");
 			} catch (GLib.Error e) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Error enabling spawn gating: %s\n", e.message);
 				throw_dbus_error (e);
 			}
 		}
 
 		public async void disable_spawn_gating (Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Disabling spawn gating for device: %s\n", device.name);
 			var server = yield get_remote_server (cancellable);
 			try {
 				yield server.session.disable_spawn_gating (cancellable);
+				stderr.printf ("[FRIDA-HOST-SESSION] Spawn gating disabled successfully\n");
 			} catch (GLib.Error e) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Error disabling spawn gating: %s\n", e.message);
 				throw_dbus_error (e);
 			}
 		}
@@ -743,11 +771,16 @@ namespace Frida {
 		}
 
 		public async uint spawn (string program, HostSpawnOptions options, Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Spawning program '%s' on device: %s\n", program, device.name);
 			var server = yield try_get_remote_server (cancellable);
 			if (server != null && (server.flavor != GADGET || program == GADGET_APP_ID)) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Using remote server for spawn (flavor: %s)\n", server.flavor.to_string());
 				try {
-					return yield server.session.spawn (program, options, cancellable);
+					uint pid = yield server.session.spawn (program, options, cancellable);
+					stderr.printf ("[FRIDA-HOST-SESSION] Program spawned with PID %u\n", pid);
+					return pid;
 				} catch (GLib.Error e) {
+					stderr.printf ("[FRIDA-HOST-SESSION] Error spawning via remote server: %s\n", e.message);
 					throw_dbus_error (e);
 				}
 			}
@@ -805,18 +838,23 @@ namespace Frida {
 					argv += provided_argv[i];
 			}
 
+			stderr.printf ("[FRIDA-HOST-SESSION] Using LLDB service for app launch\n");
 			var lldb = yield start_lldb_service (cancellable);
 			var process = yield lldb.launch (argv, launch_options, cancellable);
+			stderr.printf ("[FRIDA-HOST-SESSION] LLDB launched process with PID %u, state: %s\n", process.pid, process.observed_state.to_string());
 			if (process.observed_state == ALREADY_RUNNING) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Process already running, killing and relaunching\n");
 				yield lldb.kill (cancellable);
 				yield lldb.close (cancellable);
 
 				lldb = yield start_lldb_service (cancellable);
 				process = yield lldb.launch (argv, launch_options, cancellable);
+				stderr.printf ("[FRIDA-HOST-SESSION] Process relaunched with PID %u\n", process.pid);
 			}
 
 			var session = new LLDBSession (lldb, process, gadget_path, device);
 			add_lldb_session (session);
+			stderr.printf ("[FRIDA-HOST-SESSION] LLDB session added for PID %u\n", process.pid);
 
 			return process.pid;
 		}
@@ -846,9 +884,12 @@ namespace Frida {
 		}
 
 		public async void kill (uint pid, Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Killing process with PID %u\n", pid);
 			var lldb_session = lldb_sessions[pid];
 			if (lldb_session != null) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Using existing LLDB session to kill PID %u\n", pid);
 				yield lldb_session.kill (cancellable);
+				stderr.printf ("[FRIDA-HOST-SESSION] Process %u killed via LLDB session\n", pid);
 				return;
 			}
 
@@ -878,18 +919,23 @@ namespace Frida {
 
 		public async AgentSessionId attach (uint pid, HashTable<string, Variant> options,
 				Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Attempting to attach to process with PID %u\n", pid);
 			var lldb_session = lldb_sessions[pid];
 			if (lldb_session != null) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Found existing LLDB session for PID %u, querying gadget details\n", pid);
 				var gadget_details = yield lldb_session.query_gadget_details (cancellable);
 
 				return yield attach_via_gadget (pid, options, gadget_details, cancellable);
 			}
 
+			stderr.printf ("[FRIDA-HOST-SESSION] No LLDB session for PID %u, checking for remote server\n", pid);
 			var server = yield try_get_remote_server (cancellable);
 			if (server != null) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Remote server available, attempting remote attach\n");
 				try {
 					return yield attach_via_remote (pid, options, server, cancellable);
 				} catch (Error e) {
+					stderr.printf ("[FRIDA-HOST-SESSION] Remote attach failed: %s\n", e.message);
 					if (server.flavor == REGULAR)
 						throw_api_error (e);
 				}
@@ -916,11 +962,16 @@ namespace Frida {
 		}
 
 		private async LLDB.Client start_lldb_service (Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Starting LLDB service\n");
 			foreach (unowned string endpoint in DEBUGSERVER_ENDPOINT_CANDIDATES) {
+				stderr.printf ("[FRIDA-HOST-SESSION] Trying to connect to debugserver endpoint: %s\n", endpoint);
 				try {
 					var lldb_stream = yield device.open_lockdown_service (endpoint, cancellable);
+					stderr.printf ("[FRIDA-HOST-SESSION] Connected to debugserver endpoint: %s\n", endpoint);
+					stderr.printf ("[FRIDA-HOST-SESSION] Opening LLDB client\n");
 					return yield LLDB.Client.open (lldb_stream, cancellable);
 				} catch (Error e) {
+					stderr.printf ("[FRIDA-HOST-SESSION] Failed to connect to debugserver endpoint %s: %s\n", endpoint, e.message);
 					if (!(e is Error.NOT_SUPPORTED))
 						throw new Error.NOT_SUPPORTED ("%s", e.message);
 				}
@@ -932,7 +983,10 @@ namespace Frida {
 
 		private async AgentSessionId attach_via_gadget (uint pid, HashTable<string, Variant> options,
 				Fruity.Injector.GadgetDetails gadget_details, Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Attaching via gadget to PID %u (gadget on port %u)\n", 
+				pid, gadget_details.port);
 			try {
+				stderr.printf ("[FRIDA-HOST-SESSION] Opening TCP channel to gadget port %u\n", gadget_details.port);
 				var stream = yield device.open_channel (
 					("tcp:%" + uint16.FORMAT_MODIFIER + "u").printf (gadget_details.port),
 					cancellable);
@@ -970,8 +1024,11 @@ namespace Frida {
 
 		private async AgentSessionId attach_via_remote (uint pid, HashTable<string, Variant> options, RemoteServer server,
 				Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-HOST-SESSION] Attaching via remote server to PID %u (server flavor: %s)\n", 
+				pid, server.flavor.to_string());
 			AgentSessionId remote_session_id;
 			try {
+				stderr.printf ("[FRIDA-HOST-SESSION] Requesting remote session.attach for PID %u\n", pid);
 				remote_session_id = yield server.session.attach (pid, options, cancellable);
 			} catch (GLib.Error e) {
 				throw_dbus_error (e);

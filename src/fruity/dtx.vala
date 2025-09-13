@@ -14,11 +14,14 @@ namespace Frida.Fruity {
 
 		public static async DeviceInfoService open (HostChannelProvider channel_provider, Cancellable? cancellable = null)
 				throws Error, IOError {
+			stderr.printf ("[FRIDA-DTX] Opening DeviceInfoService\n");
 			var service = new DeviceInfoService (channel_provider);
 
 			try {
 				yield service.init_async (Priority.DEFAULT, cancellable);
+				stderr.printf ("[FRIDA-DTX] DeviceInfoService opened successfully\n");
 			} catch (GLib.Error e) {
+				stderr.printf ("[FRIDA-DTX] Error opening DeviceInfoService: %s\n", e.message);
 				throw_api_error (e);
 			}
 
@@ -122,11 +125,14 @@ namespace Frida.Fruity {
 
 		public static async ApplicationListingService open (HostChannelProvider channel_provider, Cancellable? cancellable = null)
 				throws Error, IOError {
+			stderr.printf ("[FRIDA-DTX] Opening ApplicationListingService\n");
 			var service = new ApplicationListingService (channel_provider);
 
 			try {
 				yield service.init_async (Priority.DEFAULT, cancellable);
+				stderr.printf ("[FRIDA-DTX] ApplicationListingService opened successfully\n");
 			} catch (GLib.Error e) {
+				stderr.printf ("[FRIDA-DTX] Error opening ApplicationListingService: %s\n", e.message);
 				throw_api_error (e);
 			}
 
@@ -320,11 +326,14 @@ namespace Frida.Fruity {
 
 		public static async ProcessControlService open (HostChannelProvider channel_provider, Cancellable? cancellable = null)
 				throws Error, IOError {
+			stderr.printf ("[FRIDA-DTX] Opening ProcessControlService\n");
 			var service = new ProcessControlService (channel_provider);
 
 			try {
 				yield service.init_async (Priority.DEFAULT, cancellable);
+				stderr.printf ("[FRIDA-DTX] ProcessControlService opened successfully\n");
 			} catch (GLib.Error e) {
+				stderr.printf ("[FRIDA-DTX] Error opening ProcessControlService: %s\n", e.message);
 				throw_api_error (e);
 			}
 
@@ -484,23 +493,28 @@ namespace Frida.Fruity {
 		}
 
 		public DTXConnection (IOStream stream) {
+			stderr.printf ("[FRIDA-DTX] Creating DTXConnection\n");
 			Object (stream: stream);
 		}
 
 		construct {
+			stderr.printf ("[FRIDA-DTX] Initializing DTXConnection streams\n");
 			input = new DataInputStream (stream.get_input_stream ());
 			input.byte_order = LITTLE_ENDIAN;
 			output = stream.get_output_stream ();
 
+			stderr.printf ("[FRIDA-DTX] Creating DTX control channel\n");
 			control_channel = new DTXControlChannel (this);
 			channels[control_channel.code] = control_channel;
 
 			try {
 				control_channel.notify_of_published_capabilities ();
+				stderr.printf ("[FRIDA-DTX] Published DTX capabilities\n");
 			} catch (Error e) {
 				assert_not_reached ();
 			}
 
+			stderr.printf ("[FRIDA-DTX] Starting fragment processing\n");
 			process_incoming_fragments.begin ();
 		}
 
@@ -527,12 +541,14 @@ namespace Frida.Fruity {
 		}
 
 		public DTXChannel make_channel (string identifier) throws Error {
+			stderr.printf ("[FRIDA-DTX] Creating DTX channel for identifier: %s\n", identifier);
 			check_open ();
 
 			int32 channel_code = next_channel_code++;
 
 			var channel = new DTXChannel (channel_code, this);
 			channels[channel_code] = channel;
+			stderr.printf ("[FRIDA-DTX] DTX channel created with code: %d\n", channel_code);
 
 			establish_channel.begin (channel, identifier);
 

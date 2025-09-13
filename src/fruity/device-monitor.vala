@@ -18,15 +18,19 @@ namespace Frida.Fruity {
 		private delegate void NotifyCompleteFunc ();
 
 		construct {
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Constructing device monitor\n");
 			add_backend (new UsbmuxBackend ());
 #if MACOS
 			add_backend (new MacOSCoreDeviceBackend ());
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Added MacOSCoreDeviceBackend\n");
 #else
 			add_backend (new PortableCoreDeviceBackend ());
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Added PortableCoreDeviceBackend\n");
 #endif
 		}
 
 		public async void start (Cancellable? cancellable = null) throws IOError {
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Starting device monitor with %d backends\n", backends.size);
 			state = STARTING;
 
 			var remaining = backends.size + 1;
@@ -37,8 +41,10 @@ namespace Frida.Fruity {
 					start.callback ();
 			};
 
-			foreach (var backend in backends)
+			foreach (var backend in backends) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Starting backend: %s\n", backend.get_type ().name ());
 				do_start.begin (backend, cancellable, on_complete);
+			}
 
 			var source = new IdleSource ();
 			source.set_callback (() => {
@@ -52,16 +58,22 @@ namespace Frida.Fruity {
 			on_complete = null;
 
 			var b = (PortableCoreDeviceBackend) backends.first_match (b => b is PortableCoreDeviceBackend);
-			if (b != null && b.supports_modeswitch)
+			if (b != null && b.supports_modeswitch) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Activating modeswitch support\n");
 				yield b.activate_modeswitch_support (cancellable);
+			}
 
 			state = STARTED;
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Device monitor started with %d devices\n", devices.size);
 
-			foreach (var device in devices.values)
+			foreach (var device in devices.values) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Emitting device_attached signal for: %s\n", device.udid);
 				device_attached (device);
+			}
 		}
 
 		public async void stop (Cancellable? cancellable = null) throws IOError {
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Stopping device monitor\n");
 			var remaining = backends.size + 1;
 
 			NotifyCompleteFunc on_complete = () => {
@@ -70,8 +82,10 @@ namespace Frida.Fruity {
 					stop.callback ();
 			};
 
-			foreach (var backend in backends)
+			foreach (var backend in backends) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Stopping backend: %s\n", backend.get_type ().name ());
 				do_stop.begin (backend, cancellable, on_complete);
+			}
 
 			var source = new IdleSource ();
 			source.set_callback (() => {
@@ -84,32 +98,42 @@ namespace Frida.Fruity {
 
 			on_complete = null;
 
-			foreach (var device in devices.values)
+			foreach (var device in devices.values) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Closing device: %s\n", device.udid);
 				device.close ();
+			}
 			devices.clear ();
 
 			state = STOPPED;
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Device monitor stopped\n");
 		}
 
 		private async void do_start (Backend backend, Cancellable? cancellable, NotifyCompleteFunc on_complete) {
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Starting backend %s\n", backend.get_type ().name ());
 			try {
 				yield backend.start (cancellable);
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Backend %s started successfully\n", backend.get_type ().name ());
 			} catch (IOError e) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Backend %s failed to start: %s\n", backend.get_type ().name (), e.message);
 			}
 
 			on_complete ();
 		}
 
 		private async void do_stop (Backend backend, Cancellable? cancellable, NotifyCompleteFunc on_complete) {
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Stopping backend %s\n", backend.get_type ().name ());
 			try {
 				yield backend.stop (cancellable);
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Backend %s stopped successfully\n", backend.get_type ().name ());
 			} catch (IOError e) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Backend %s failed to stop: %s\n", backend.get_type ().name (), e.message);
 			}
 
 			on_complete ();
 		}
 
 		private void add_backend (Backend backend) {
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Adding backend: %s\n", backend.get_type ().name ());
 			backends.add (backend);
 			backend.transport_attached.connect (on_transport_attached);
 			backend.transport_detached.connect (on_transport_detached);
@@ -117,29 +141,47 @@ namespace Frida.Fruity {
 
 		private void on_transport_attached (Transport transport) {
 			unowned string udid = transport.udid;
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Transport attached for device: %s (connection: %s)\n", 
+				udid, transport.connection_type.to_string ());
 
 			var device = devices[udid];
 			if (device == null) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Creating new device for UDID: %s\n", udid);
 				device = new Device ();
 				devices[udid] = device;
+			} else {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Adding transport to existing device: %s\n", udid);
 			}
 
 			device.transports.add (transport);
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Device %s now has %d transport(s)\n", udid, device.transports.size);
 
-			if (state != STARTING && device.transports.size == 1)
+			if (state != STARTING && device.transports.size == 1) {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Emitting device_attached for: %s\n", udid);
 				device_attached (device);
+			}
 		}
 
 		private void on_transport_detached (Transport transport) {
 			unowned string udid = transport.udid;
+			stderr.printf ("[FRIDA-DEVICE-MONITOR] Transport detached for device: %s (connection: %s)\n", 
+				udid, transport.connection_type.to_string ());
 
 			var device = devices[udid];
-			device.transports.remove (transport);
-			if (device.transports.is_empty) {
-				devices.unset (udid);
+			if (device != null) {
+				device.transports.remove (transport);
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Device %s now has %d transport(s)\n", udid, device.transports.size);
+				if (device.transports.is_empty) {
+					stderr.printf ("[FRIDA-DEVICE-MONITOR] Removing device with no transports: %s\n", udid);
+					devices.unset (udid);
 
-				if (state != STARTING)
-					device_detached (device);
+					if (state != STARTING) {
+						stderr.printf ("[FRIDA-DEVICE-MONITOR] Emitting device_detached for: %s\n", udid);
+						device_detached (device);
+					}
+				}
+			} else {
+				stderr.printf ("[FRIDA-DEVICE-MONITOR] Warning: Transport detached for unknown device: %s\n", udid);
 			}
 		}
 	}
@@ -201,58 +243,84 @@ namespace Frida.Fruity {
 		};
 
 		internal void close () {
+			stderr.printf ("[FRIDA-DEVICE] Closing device: %s\n", udid);
 			transports.clear ();
 		}
 
 		public UsbmuxDevice? find_usbmux_device () {
+			stderr.printf ("[FRIDA-DEVICE] Finding usbmux device for: %s\n", udid);
 			var transport = transports.first_match (t => t.usbmux_device != null && t.connection_type == USB);
 			if (transport == null)
 				transport = transports.first_match (t => t.usbmux_device != null);
-			return (transport != null) ? transport.usbmux_device : null;
+			var result = (transport != null) ? transport.usbmux_device : null;
+			stderr.printf ("[FRIDA-DEVICE] Found usbmux device for %s: %s\n", udid, (result != null) ? "yes" : "no");
+			return result;
 		}
 
 		public UsbmuxDevice get_usbmux_device () throws Error {
+			stderr.printf ("[FRIDA-DEVICE] Getting usbmux device for: %s\n", udid);
 			var d = find_usbmux_device ();
-			if (d == null)
+			if (d == null) {
+				stderr.printf ("[FRIDA-DEVICE] USB connection not available for: %s\n", udid);
 				throw new Error.NOT_SUPPORTED ("USB connection not available");
+			}
+			stderr.printf ("[FRIDA-DEVICE] Successfully got usbmux device for: %s\n", udid);
 			return d;
 		}
 
 		public async Tunnel? find_tunnel (Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-DEVICE] Finding tunnel for device: %s\n", udid);
 			var usbmux_device = find_usbmux_device ();
 			foreach (var transport in transports) {
+				stderr.printf ("[FRIDA-DEVICE] Checking transport %s for tunnel\n", transport.get_type ().name ());
 				Tunnel? tunnel = yield transport.find_tunnel (usbmux_device, cancellable);
-				if (tunnel != null)
+				if (tunnel != null) {
+					stderr.printf ("[FRIDA-DEVICE] Found tunnel for device: %s\n", udid);
 					return tunnel;
+				}
 			}
+			stderr.printf ("[FRIDA-DEVICE] No tunnel found for device: %s\n", udid);
 			return null;
 		}
 
 		public async LockdownClient get_lockdown_client (Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-DEVICE] Getting lockdown client for: %s\n", udid);
 			var stream = yield open_lockdown_service ("", cancellable);
+			stderr.printf ("[FRIDA-DEVICE] Successfully created lockdown client for: %s\n", udid);
 			return new LockdownClient (stream);
 		}
 
 		public async IOStream open_lockdown_service (string service_name, Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-DEVICE] Opening lockdown service '%s' for device: %s\n", service_name, udid);
 			var tunnel = yield find_tunnel (cancellable);
 			if (tunnel != null) {
+				stderr.printf ("[FRIDA-DEVICE] Using tunnel for lockdown service '%s'\n", service_name);
 				ServiceInfo? service_info = null;
 				bool needs_checkin = service_name == "";
 				try {
-					service_info = tunnel.discovery.get_service (
-						(service_name == "") ? "com.apple.mobile.lockdown.remote.trusted" : service_name);
+					string lookup_service = (service_name == "") ? "com.apple.mobile.lockdown.remote.trusted" : service_name;
+					stderr.printf ("[FRIDA-DEVICE] Looking up service: %s\n", lookup_service);
+					service_info = tunnel.discovery.get_service (lookup_service);
+					stderr.printf ("[FRIDA-DEVICE] Found service %s at port %d\n", lookup_service, service_info.port);
 				} catch (Error e) {
+					stderr.printf ("[FRIDA-DEVICE] Service lookup failed: %s\n", e.message);
 					if (!(e is Error.NOT_SUPPORTED))
 						throw e;
 				}
 				if (service_info == null) {
-					service_info = tunnel.discovery.get_service (service_name + ".shim.remote");
+					string shim_service = service_name + ".shim.remote";
+					stderr.printf ("[FRIDA-DEVICE] Trying shim service: %s\n", shim_service);
+					service_info = tunnel.discovery.get_service (shim_service);
 					needs_checkin = true;
+					stderr.printf ("[FRIDA-DEVICE] Found shim service %s at port %d\n", shim_service, service_info.port);
 				}
 
+				stderr.printf ("[FRIDA-DEVICE] Opening TCP connection to port %d\n", service_info.port);
 				var stream = yield tunnel.open_tcp_connection (service_info.port, cancellable);
+				stderr.printf ("[FRIDA-DEVICE] TCP connection established\n");
 
 				if (needs_checkin) {
+					stderr.printf ("[FRIDA-DEVICE] Performing RSD checkin\n");
 					var service = new PlistServiceClient (stream);
 
 					var checkin = new Plist ();
@@ -269,9 +337,12 @@ namespace Frida.Fruity {
 						var result = yield service.read_message (cancellable);
 						if (result.has ("Error")) {
 							var error_type = result.get_string ("Error");
+							stderr.printf ("[FRIDA-DEVICE] RSD checkin error: %s\n", error_type);
 							if (error_type == "ServiceProhibited")
 								throw new Error.PERMISSION_DENIED ("Service prohibited");
 							throw new Error.NOT_SUPPORTED ("%s", error_type);
+						} else {
+							stderr.printf ("[FRIDA-DEVICE] RSD checkin successful\n");
 						}
 					} catch (PlistServiceError e) {
 						throw new Error.PROTOCOL ("%s", e.message);
@@ -280,20 +351,26 @@ namespace Frida.Fruity {
 					}
 				}
 
+				stderr.printf ("[FRIDA-DEVICE] Returning tunnel stream for service '%s'\n", service_name);
 				return stream;
 			}
 
+			stderr.printf ("[FRIDA-DEVICE] No tunnel available, using USB connection\n");
 			if (service_name == "") {
+				stderr.printf ("[FRIDA-DEVICE] Opening direct USB lockdown client\n");
 				var client = yield open_usbmux_lockdown_client (cancellable);
 				return client.service.stream;
 			}
 
+			stderr.printf ("[FRIDA-DEVICE] Queuing USB lockdown service request for '%s'\n", service_name);
 			var request = new UsbmuxLockdownServiceRequest (service_name, cancellable);
 			bool first_request = usbmux_lockdown_service_requests.is_empty;
 			usbmux_lockdown_service_requests.offer (request);
 
-			if (first_request)
+			if (first_request) {
+				stderr.printf ("[FRIDA-DEVICE] Starting USB lockdown service request processing\n");
 				process_usbmux_lockdown_service_requests.begin ();
+			}
 
 			return yield request.promise.future.wait_async (cancellable);
 		}
@@ -308,17 +385,31 @@ namespace Frida.Fruity {
 		}
 
 		private async void process_usbmux_lockdown_service_requests () {
+			stderr.printf ("[FRIDA-DEVICE] Processing USB lockdown service requests queue (size: %d)\n", 
+				usbmux_lockdown_service_requests.size);
 			UsbmuxLockdownServiceRequest? req;
 			bool already_invalidated = false;
+			uint processed_count = 0;
 			while ((req = usbmux_lockdown_service_requests.peek ()) != null) {
+				processed_count++;
+				stderr.printf ("[FRIDA-DEVICE] Processing request %u for service '%s'\n", 
+					processed_count, req.service_name);
 				try {
-					if (cached_usbmux_lockdown_client == null)
+					if (cached_usbmux_lockdown_client == null) {
+						stderr.printf ("[FRIDA-DEVICE] Creating new USB lockdown client\n");
 						cached_usbmux_lockdown_client = yield open_usbmux_lockdown_client (req.cancellable);
+					} else {
+						stderr.printf ("[FRIDA-DEVICE] Reusing cached USB lockdown client\n");
+					}
+					stderr.printf ("[FRIDA-DEVICE] Starting service '%s'\n", req.service_name);
 					var stream = yield cached_usbmux_lockdown_client.start_service (req.service_name, req.cancellable);
+					stderr.printf ("[FRIDA-DEVICE] Successfully started service '%s'\n", req.service_name);
 					req.promise.resolve (stream);
 				} catch (GLib.Error e) {
+					stderr.printf ("[FRIDA-DEVICE] Error starting service '%s': %s\n", req.service_name, e.message);
 					if (e is LockdownError.CONNECTION_CLOSED && cached_usbmux_lockdown_client != null &&
 							!already_invalidated) {
+						stderr.printf ("[FRIDA-DEVICE] Connection closed, invalidating cached client and retrying\n");
 						cached_usbmux_lockdown_client = null;
 						already_invalidated = true;
 						continue;
@@ -330,12 +421,18 @@ namespace Frida.Fruity {
 
 				usbmux_lockdown_service_requests.poll ();
 			}
+			stderr.printf ("[FRIDA-DEVICE] Finished processing %u USB lockdown service requests\n", processed_count);
 		}
 
 		private async LockdownClient open_usbmux_lockdown_client (Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-DEVICE] Opening USB lockdown client for device: %s\n", udid);
 			try {
-				var client = yield LockdownClient.open (get_usbmux_device (), cancellable);
+				var device = get_usbmux_device ();
+				stderr.printf ("[FRIDA-DEVICE] Got USB device (ID: %u), opening lockdown client\n", device.id);
+				var client = yield LockdownClient.open (device, cancellable);
+				stderr.printf ("[FRIDA-DEVICE] Starting lockdown session\n");
 				yield client.start_session (cancellable);
+				stderr.printf ("[FRIDA-DEVICE] Successfully opened USB lockdown client\n");
 				return client;
 			} catch (LockdownError e) {
 				throw new Error.NOT_SUPPORTED ("%s", e.message);
@@ -343,48 +440,70 @@ namespace Frida.Fruity {
 		}
 
 		public async IOStream open_channel (string address, Cancellable? cancellable) throws Error, IOError {
+			stderr.printf ("[FRIDA-DEVICE] Opening channel to address: %s\n", address);
 			string[] tokens = address.split (":", 2);
 			unowned string protocol = tokens[0];
 			unowned string location = tokens[1];
+			stderr.printf ("[FRIDA-DEVICE] Parsed protocol: %s, location: %s\n", protocol, location);
 
 			if (protocol == "tcp") {
+				stderr.printf ("[FRIDA-DEVICE] Opening TCP channel to location: %s\n", location);
 				var channel = yield open_tcp_channel (location, ALLOW_ANY_TRANSPORT, cancellable);
+				stderr.printf ("[FRIDA-DEVICE] Successfully opened TCP channel (kind: %s)\n", channel.kind.to_string ());
 				return channel.stream;
 			}
 
-			if (protocol == "lockdown")
+			if (protocol == "lockdown") {
+				stderr.printf ("[FRIDA-DEVICE] Opening lockdown service: %s\n", location);
 				return yield open_lockdown_service (location, cancellable);
+			}
 
+			stderr.printf ("[FRIDA-DEVICE] Unsupported channel protocol: %s\n", protocol);
 			throw new Error.NOT_SUPPORTED ("Unsupported channel address");
 		}
 
 		public async TcpChannel open_tcp_channel (string location, OpenTcpChannelFlags flags, Cancellable? cancellable)
 				throws Error, IOError {
+			stderr.printf ("[FRIDA-DEVICE] Opening TCP channel to location: %s, flags: 0x%x\n", location, flags);
 			var usbmux_device = find_usbmux_device ();
 			var tunnel = yield find_tunnel (cancellable);
+			stderr.printf ("[FRIDA-DEVICE] Found usbmux device: %s, tunnel available: %s\n", 
+				(usbmux_device != null) ? "yes" : "no", (tunnel != null) ? "yes" : "no");
 
 			uint16 port;
 			ulong raw_port;
 			if (ulong.try_parse (location, out raw_port)) {
-				if (raw_port == 0 || raw_port > uint16.MAX)
+				if (raw_port == 0 || raw_port > uint16.MAX) {
+					stderr.printf ("[FRIDA-DEVICE] Invalid TCP port: %lu\n", raw_port);
 					throw new Error.INVALID_ARGUMENT ("Invalid TCP port");
+				}
 				port = (uint16) raw_port;
+				stderr.printf ("[FRIDA-DEVICE] Using numeric port: %u\n", port);
 			} else {
-				if (tunnel == null)
+				if (tunnel == null) {
+					stderr.printf ("[FRIDA-DEVICE] Cannot resolve service name '%s': no tunnel available\n", location);
 					throw new Error.NOT_SUPPORTED ("Unable to resolve port name; tunnel not available");
-				if ((flags & OpenTcpChannelFlags.ALLOW_TUNNEL) == 0)
+				}
+				if ((flags & OpenTcpChannelFlags.ALLOW_TUNNEL) == 0) {
+					stderr.printf ("[FRIDA-DEVICE] Tunnel connection not allowed by flags for service: %s\n", location);
 					throw new Error.NOT_SUPPORTED ("Connection to tunnel service not allowed by flags");
+				}
+				stderr.printf ("[FRIDA-DEVICE] Resolving service name: %s\n", location);
 				var service_info = tunnel.discovery.get_service (location);
 				port = service_info.port;
+				stderr.printf ("[FRIDA-DEVICE] Resolved service '%s' to port %u\n", location, port);
 			}
 
 			Error? pending_error = null;
 
 			if ((flags & OpenTcpChannelFlags.ALLOW_TUNNEL) != 0 && tunnel != null) {
+				stderr.printf ("[FRIDA-DEVICE] Attempting tunnel connection to port %u\n", port);
 				try {
 					var stream = yield tunnel.open_tcp_connection (port, cancellable);
+					stderr.printf ("[FRIDA-DEVICE] Successfully opened tunnel connection to port %u\n", port);
 					return new TcpChannel () { stream = stream, kind = TUNNEL };
 				} catch (Error e) {
+					stderr.printf ("[FRIDA-DEVICE] Tunnel connection failed: %s\n", e.message);
 					if (e is Error.SERVER_NOT_RUNNING)
 						pending_error = e;
 					else
@@ -393,15 +512,20 @@ namespace Frida.Fruity {
 			}
 
 			if ((flags & OpenTcpChannelFlags.ALLOW_USBMUX) != 0 && usbmux_device != null) {
+				stderr.printf ("[FRIDA-DEVICE] Attempting USB mux connection\n");
 				if (usbmux_device.connection_type == USB) {
+					stderr.printf ("[FRIDA-DEVICE] Using USB connection to device %u, port %u\n", usbmux_device.id, port);
 					UsbmuxClient client = null;
 					try {
 						client = yield UsbmuxClient.open (cancellable);
 
 						yield client.connect_to_port (usbmux_device.id, port, cancellable);
+						stderr.printf ("[FRIDA-DEVICE] Successfully connected via USB to device %u port %u\n", 
+							usbmux_device.id, port);
 
 						return new TcpChannel () { stream = client.connection, kind = USBMUX };
 					} catch (GLib.Error e) {
+						stderr.printf ("[FRIDA-DEVICE] USB connection failed: %s\n", e.message);
 						if (client != null)
 							client.close.begin ();
 
@@ -410,6 +534,8 @@ namespace Frida.Fruity {
 
 						throw new Error.TRANSPORT ("%s", e.message);
 					}
+				} else {
+					stderr.printf ("[FRIDA-DEVICE] Using network connection to device\n");
 				}
 
 				InetSocketAddress device_address = usbmux_device.network_address;
@@ -554,6 +680,7 @@ namespace Frida.Fruity {
 		private Cancellable io_cancellable = new Cancellable ();
 
 		public async void start (Cancellable? cancellable) throws IOError {
+			stderr.printf ("[FRIDA-USBMUX-BACKEND] Starting USB mux backend\n");
 			start_request = new Promise<bool> ();
 			start_cancellable = new Cancellable ();
 			on_start_completed = start.callback;
@@ -568,6 +695,7 @@ namespace Frida.Fruity {
 			cancel_source.set_callback (start.callback);
 			cancel_source.attach (main_context);
 
+			stderr.printf ("[FRIDA-USBMUX-BACKEND] Starting background initialization\n");
 			do_start.begin ();
 
 			yield;
@@ -575,16 +703,21 @@ namespace Frida.Fruity {
 			cancel_source.destroy ();
 			timeout_source.destroy ();
 			on_start_completed = null;
+			stderr.printf ("[FRIDA-USBMUX-BACKEND] Backend start completed\n");
 		}
 
 		private async void do_start () {
+			stderr.printf ("[FRIDA-USBMUX-BACKEND] Attempting to open USB mux client\n");
 			bool success = yield try_open_usbmux_client ();
 			if (success) {
+				stderr.printf ("[FRIDA-USBMUX-BACKEND] Successfully opened USB mux client\n");
 				/* Perform a dummy-request to flush out any pending device attach notifications. */
+				stderr.printf ("[FRIDA-USBMUX-BACKEND] Performing dummy request to flush device notifications\n");
 				try {
 					yield usbmux.connect_to_port (uint.MAX, 0, start_cancellable);
 					assert_not_reached ();
 				} catch (GLib.Error expected_error) {
+					stderr.printf ("[FRIDA-USBMUX-BACKEND] Dummy request completed with expected error: %s\n", expected_error.message);
 					if (expected_error.code == IOError.CONNECTION_CLOSED) {
 						/* Deal with usbmuxd closing the connection when receiving commands in the wrong state. */
 						usbmux.close.begin (null);

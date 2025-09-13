@@ -30,11 +30,14 @@ namespace Frida.Fruity {
 		private const uint32 MAX_MESSAGE_SIZE = 128 * 1024;
 
 		public static async UsbmuxClient open (Cancellable? cancellable = null) throws UsbmuxError, IOError {
+			stderr.printf ("[FRIDA-USBMUX] Opening usbmux client\n");
 			var client = new UsbmuxClient ();
 
 			try {
 				yield client.init_async (Priority.DEFAULT, cancellable);
+				stderr.printf ("[FRIDA-USBMUX] Usbmux client opened successfully\n");
 			} catch (GLib.Error e) {
+				stderr.printf ("[FRIDA-USBMUX] Failed to open usbmux client: %s\n", e.message);
 				throw_local_error (e);
 			}
 
@@ -42,11 +45,13 @@ namespace Frida.Fruity {
 		}
 
 		private async bool init_async (int io_priority, Cancellable? cancellable) throws UsbmuxError, IOError {
+			stderr.printf ("[FRIDA-USBMUX] Initializing usbmux client\n");
 			assert (!is_processing_messages);
 
 			SocketConnectable? connectable = null;
 			string? env_socket_address = Environment.get_variable ("USBMUXD_SOCKET_ADDRESS");
 			if (env_socket_address != null) {
+				stderr.printf ("[FRIDA-USBMUX] Using environment socket address: %s\n", env_socket_address);
 				if (env_socket_address.has_prefix ("UNIX:")) {
 #if !WINDOWS
 					connectable = new UnixSocketAddress (env_socket_address[5:]);
@@ -61,28 +66,37 @@ namespace Frida.Fruity {
 
 			if (connectable == null) {
 #if WINDOWS
+				stderr.printf ("[FRIDA-USBMUX] Connecting to Windows usbmux on port %d\n", USBMUXD_DEFAULT_SERVER_PORT);
 				connectable = new InetSocketAddress (new InetAddress.loopback (SocketFamily.IPV4),
 					USBMUXD_DEFAULT_SERVER_PORT);
 #else
+				stderr.printf ("[FRIDA-USBMUX] Connecting to Unix socket: /var/run/usbmuxd\n");
 				connectable = new UnixSocketAddress ("/var/run/usbmuxd");
 #endif
+			} else {
+				stderr.printf ("[FRIDA-USBMUX] Using default socket address\n");
 			}
 
 			try {
 				var client = new SocketClient ();
 				connection = yield client.connect_async (connectable, cancellable);
+				stderr.printf ("[FRIDA-USBMUX] Successfully connected to usbmuxd\n");
 
 				var socket = connection.socket;
-				if (socket.get_family () != UNIX)
+				if (socket.get_family () != UNIX) {
 					Tcp.enable_nodelay (socket);
+					stderr.printf ("[FRIDA-USBMUX] Enabled TCP_NODELAY on socket\n");
+				}
 
 				input = connection.get_input_stream ();
 				output = connection.get_output_stream ();
 
 				is_processing_messages = true;
+				stderr.printf ("[FRIDA-USBMUX] Starting message processing\n");
 
 				process_incoming_messages.begin ();
 			} catch (GLib.Error e) {
+				stderr.printf ("[FRIDA-USBMUX] Failed to connect to usbmuxd: %s\n", e.message);
 				throw new UsbmuxError.DAEMON_NOT_RUNNING ("%s", e.message);
 			}
 
@@ -90,10 +104,12 @@ namespace Frida.Fruity {
 		}
 
 		public async void close (Cancellable? cancellable = null) throws IOError {
+			stderr.printf ("[FRIDA-USBMUX] Closing usbmux client\n");
 			if (is_processing_messages) {
 				is_processing_messages = false;
 
 				io_cancellable.cancel ();
+				stderr.printf ("[FRIDA-USBMUX] Cancelled I/O operations\n");
 
 				var source = new IdleSource ();
 				source.set_priority (Priority.LOW);
@@ -116,6 +132,7 @@ namespace Frida.Fruity {
 		}
 
 		public async void enable_listen_mode (Cancellable? cancellable = null) throws UsbmuxError, IOError {
+			stderr.printf ("[FRIDA-USBMUX] Enabling listen mode\n");
 			assert (is_processing_messages);
 
 			var request = create_request ("Listen");
@@ -128,15 +145,21 @@ namespace Frida.Fruity {
 					throw new UsbmuxError.PROTOCOL ("Unexpected response message type");
 
 				var result = (int) response.get_integer ("Number");
-				if (result != ResultCode.SUCCESS)
+				if (result != ResultCode.SUCCESS) {
+					stderr.printf ("[FRIDA-USBMUX] Listen mode enable failed with result: %d\n", result);
 					throw new UsbmuxError.PROTOCOL ("Unexpected result while trying to enable listen mode: %d", result);
+				} else {
+					stderr.printf ("[FRIDA-USBMUX] Listen mode enabled successfully\n");
+				}
 			} catch (PlistError e) {
+				stderr.printf ("[FRIDA-USBMUX] Listen mode enable failed with protocol error: %s\n", e.message);
 				throw new UsbmuxError.PROTOCOL ("Unexpected response: %s", e.message);
 			}
 		}
 
 		public async void connect_to_port (uint device_id, uint16 port, Cancellable? cancellable = null)
 				throws UsbmuxError, IOError {
+			stderr.printf ("[FRIDA-USBMUX] Connecting to device %u port %u\n", device_id, port);
 			assert (is_processing_messages);
 
 			var request = create_request ("Connect");

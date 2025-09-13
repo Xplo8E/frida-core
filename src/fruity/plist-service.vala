@@ -39,6 +39,7 @@ namespace Frida.Fruity {
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
+			stderr.printf ("[FRIDA-PLIST-SERVICE] Closing PlistServiceClient\n");
 			io_cancellable.cancel ();
 
 			var source = new IdleSource ();
@@ -48,17 +49,23 @@ namespace Frida.Fruity {
 
 			try {
 				yield stream.close_async (Priority.DEFAULT, cancellable);
+				stderr.printf ("[FRIDA-PLIST-SERVICE] Stream closed successfully\n");
 			} catch (IOError e) {
+				stderr.printf ("[FRIDA-PLIST-SERVICE] Error closing stream: %s\n", e.message);
 			}
 		}
 
 		public async Plist query (Plist request, Cancellable? cancellable) throws PlistServiceError, IOError {
+			stderr.printf ("[FRIDA-PLIST-SERVICE] Sending plist query\n");
 			write_message (request);
-			return yield read_message (cancellable);
+			var response = yield read_message (cancellable);
+			stderr.printf ("[FRIDA-PLIST-SERVICE] Received plist response\n");
+			return response;
 		}
 
 		public void write_message (Plist message) {
 			uint8[] message_data = message.to_binary ();
+			stderr.printf ("[FRIDA-PLIST-SERVICE] Writing plist message (%u bytes)\n", message_data.length);
 
 			uint offset = pending_output.len;
 			pending_output.set_size ((uint) (offset + sizeof (uint32) + message_data.length));
@@ -83,7 +90,9 @@ namespace Frida.Fruity {
 		}
 
 		public async Plist read_message (Cancellable? cancellable) throws PlistServiceError, IOError {
+			stderr.printf ("[FRIDA-PLIST-SERVICE] Reading single plist message\n");
 			var messages = yield read_messages (1, cancellable);
+			stderr.printf ("[FRIDA-PLIST-SERVICE] Received plist message\n");
 			return messages[0];
 		}
 

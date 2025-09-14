@@ -2,7 +2,7 @@
 namespace Frida.Fruity.Injector {
 	public static async GadgetDetails inject (owned Gum.DarwinModule module, LLDB.Client lldb, HostChannelProvider channel_provider,
 			Cancellable? cancellable) throws Error, IOError {
-		stderr.printf ("[FRIDA-INJECTOR] Starting injection of module %s at 0x%llx\n", 
+		Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Starting injection of module %s at 0x%llx\n", 
 			module.name ?? "unknown", module.base_address);
 		var session = new Session (module, lldb, channel_provider);
 		return yield session.run (cancellable);
@@ -15,7 +15,7 @@ namespace Frida.Fruity.Injector {
 		}
 
 		public GadgetDetails (uint16 port) {
-			stderr.printf ("[FRIDA-INJECTOR] Creating GadgetDetails for port %u\n", port);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Creating GadgetDetails for port %u\n", port);
 			Object (port: port);
 		}
 	}
@@ -73,7 +73,7 @@ namespace Frida.Fruity.Injector {
 		private size_t module_size;
 
 		public Session (Gum.DarwinModule module, LLDB.Client lldb, HostChannelProvider channel_provider) {
-			stderr.printf ("[FRIDA-INJECTOR] Creating Session for module %s at 0x%llx\n", 
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Creating Session for module %s at 0x%llx\n", 
 				module.name ?? "unknown", module.base_address);
 			Object (
 				module: module,
@@ -84,39 +84,39 @@ namespace Frida.Fruity.Injector {
 
 		public async GadgetDetails run (Cancellable? cancellable) throws Error, IOError {
 			try {
-				stderr.printf ("[FRIDA-INJECTOR] Setting up injection session\n");
+				Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Setting up injection session\n");
 				var existing_gadget = yield setup (cancellable);
 				if (existing_gadget != null) {
-					stderr.printf ("[FRIDA-INJECTOR] Found existing gadget listening on port %u, reusing\n", existing_gadget.port);
+					Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Found existing gadget listening on port %u, reusing\n", existing_gadget.port);
 					yield lldb.detach (cancellable);
 					return existing_gadget;
 				}
 
 				bool is_early_instrumentation = !libsystem_initialized;
-				stderr.printf ("[FRIDA-INJECTOR] libsystem %s initialized, performing %s instrumentation\n", 
+				Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] libsystem %s initialized, performing %s instrumentation\n", 
 					libsystem_initialized ? "is" : "is not", 
 					is_early_instrumentation ? "early" : "late");
 
-				stderr.printf ("[FRIDA-INJECTOR] Ensuring libsystem is initialized\n");
+				Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Ensuring libsystem is initialized\n");
 				yield ensure_libsystem_initialized (cancellable);
-				stderr.printf ("[FRIDA-INJECTOR] Injecting module\n");
+				Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Injecting module\n");
 				var result = yield inject_module (cancellable);
 
-				stderr.printf ("[FRIDA-INJECTOR] Module injected successfully, gadget listening on port %u\n", result.port);
+				Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Module injected successfully, gadget listening on port %u\n", result.port);
 				yield teardown (cancellable);
 
 				if (is_early_instrumentation) {
-					stderr.printf ("[FRIDA-INJECTOR] Early instrumentation: continuing gadget threads\n");
+					Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Early instrumentation: continuing gadget threads\n");
 					var gadget_threads = new Gee.ArrayList<LLDB.Thread> ();
 					yield lldb.enumerate_threads (thread => {
 						if (thread.id != main_thread.id)
 							gadget_threads.add (thread);
 						return true;
 					}, cancellable);
-					stderr.printf ("[FRIDA-INJECTOR] Found %u gadget threads to continue\n", gadget_threads.size);
+					Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Found %u gadget threads to continue\n", gadget_threads.size);
 					yield lldb.continue_specific_threads (gadget_threads, cancellable);
 				} else {
-					stderr.printf ("[FRIDA-INJECTOR] Late instrumentation: detaching from process\n");
+					Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Late instrumentation: detaching from process\n");
 					yield lldb.detach (cancellable);
 				}
 
@@ -127,13 +127,13 @@ namespace Frida.Fruity.Injector {
 		}
 
 		private async GadgetDetails? setup (Cancellable? cancellable) throws GLib.Error {
-			stderr.printf ("[FRIDA-INJECTOR] Setting up injection environment\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Setting up injection environment\n");
 			GadgetDetails? existing_gadget = null;
-			stderr.printf ("[FRIDA-INJECTOR] Enumerating threads to find main thread and check for existing gadget\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Enumerating threads to find main thread and check for existing gadget\n");
 			yield lldb.enumerate_threads (thread => {
 				if (main_thread == null) {
 					main_thread = thread;
-					stderr.printf ("[FRIDA-INJECTOR] Selected thread %s as main thread\n", thread.id.to_string ());
+					Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Selected thread %s as main thread\n", thread.id.to_string ());
 				}
 
 				unowned string? name = thread.name;
@@ -150,7 +150,7 @@ namespace Frida.Fruity.Injector {
 						uint64.from_string (raw_port, out port, radix, 1, uint16.MAX);
 
 						existing_gadget = new GadgetDetails ((uint16) port);
-						stderr.printf ("[FRIDA-INJECTOR] Found existing gadget thread '%s' listening on port %u\n", 
+						Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Found existing gadget thread '%s' listening on port %u\n", 
 							name, (uint16) port);
 
 						return false;
@@ -164,16 +164,16 @@ namespace Frida.Fruity.Injector {
 				return existing_gadget;
 			yield save_main_thread_state (cancellable);
 
-			stderr.printf ("[FRIDA-INJECTOR] Allocating JIT and scratch pages\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Allocating JIT and scratch pages\n");
 			jit_page = yield lldb.allocate (page_size, "rx", cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Allocated JIT page at 0x%llx\n", jit_page);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Allocated JIT page at 0x%llx\n", jit_page);
 			scratch_page = yield lldb.allocate (page_size, "rw", cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Allocated scratch page at 0x%llx\n", scratch_page);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Allocated scratch page at 0x%llx\n", scratch_page);
 
-			stderr.printf ("[FRIDA-INJECTOR] Getting dyld fields\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Getting dyld fields\n");
 			dyld_fields = yield lldb.get_apple_dyld_fields (ALLOW_CACHE, cancellable);
 			libsystem_initialized = yield lldb.read_bool (dyld_fields.libsystem_initialized, cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Dyld fields acquired, libsystem_initialized = %s\n", 
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Dyld fields acquired, libsystem_initialized = %s\n", 
 				libsystem_initialized ? "true" : "false");
 			if (libsystem_initialized) {
 				dyld_base = yield lldb.read_pointer (dyld_fields.dyld_load_address, cancellable);
@@ -192,81 +192,81 @@ namespace Frida.Fruity.Injector {
 		}
 
 		private async void teardown (Cancellable? cancellable) throws GLib.Error {
-			stderr.printf ("[FRIDA-INJECTOR] Tearing down injection session\n");
-			stderr.printf ("[FRIDA-INJECTOR] Deallocating scratch page at 0x%llx\n", scratch_page);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Tearing down injection session\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Deallocating scratch page at 0x%llx\n", scratch_page);
 			yield lldb.deallocate (scratch_page, cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Deallocating JIT page at 0x%llx\n", jit_page);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Deallocating JIT page at 0x%llx\n", jit_page);
 			yield lldb.deallocate (jit_page, cancellable);
 
-			stderr.printf ("[FRIDA-INJECTOR] Restoring main thread state\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Restoring main thread state\n");
 			yield restore_main_thread_state (cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Teardown complete\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Teardown complete\n");
 		}
 
 		private async void save_main_thread_state (Cancellable? cancellable) throws GLib.Error {
-			stderr.printf ("[FRIDA-INJECTOR] Saving main thread %s state\n", main_thread.id.to_string ());
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Saving main thread %s state\n", main_thread.id.to_string ());
 			assert (saved_state == null);
 			saved_state = yield main_thread.save_register_state (cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Successfully saved thread register state\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Successfully saved thread register state\n");
 
 			stack_bounds = null;
 		}
 
 		private async void restore_main_thread_state (Cancellable? cancellable) throws GLib.Error {
-			stderr.printf ("[FRIDA-INJECTOR] Restoring main thread %s state\n", main_thread.id.to_string ());
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Restoring main thread %s state\n", main_thread.id.to_string ());
 			assert (saved_state != null);
 			yield main_thread.restore_register_state (saved_state, cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Successfully restored thread register state\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Successfully restored thread register state\n");
 			saved_state = null;
 		}
 
 		private async GadgetDetails inject_module (Cancellable? cancellable) throws GLib.Error {
-			stderr.printf ("[FRIDA-INJECTOR] Starting module injection\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Starting module injection\n");
 			module_size = compute_virtual_size (module);
-			stderr.printf ("[FRIDA-INJECTOR] Allocating %zu bytes for module\n", module_size);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Allocating %zu bytes for module\n", module_size);
 			module.base_address = yield lldb.allocate (module_size, "rw", cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Module allocated at 0x%llx\n", module.base_address);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Module allocated at 0x%llx\n", module.base_address);
 
 			unowned Gum.DarwinModuleImage image = module.image;
 			unowned uint8[] image_data = ((uint8[]) image.data)[0:image.size];
-			stderr.printf ("[FRIDA-INJECTOR] Creating buffer with module image data (%llu bytes)\n", (uint64) image.size);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Creating buffer with module image data (%llu bytes)\n", (uint64) image.size);
 			var buffer = lldb.make_buffer (new Bytes.static (image_data));
 
-			stderr.printf ("[FRIDA-INJECTOR] Performing rebase operations\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Performing rebase operations\n");
 			perform_rebase_operations (buffer);
 
-			stderr.printf ("[FRIDA-INJECTOR] Setting up symbol resolution and fixups\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Setting up symbol resolution and fixups\n");
 			var symbols_needed = new SymbolQueryBuilder ();
 			var threaded_items = new ThreadedItemsBuilder ();
 			var chained_fixups = new ChainedFixupsBuilder ();
 
-			stderr.printf ("[FRIDA-INJECTOR] Collecting needed symbols and threaded items\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Collecting needed symbols and threaded items\n");
 			collect_needed_symbols_and_threaded_items (buffer, symbols_needed, threaded_items);
-			stderr.printf ("[FRIDA-INJECTOR] Collecting chained fixups\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Collecting chained fixups\n");
 			collect_chained_fixups (chained_fixups);
-			stderr.printf ("[FRIDA-INJECTOR] Extending symbol query\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Extending symbol query\n");
 			UploadSymbols.extend_query (symbols_needed);
 
-			stderr.printf ("[FRIDA-INJECTOR] Resolving symbols\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Resolving symbols\n");
 			var symbols = yield resolve_symbols (symbols_needed.build (), cancellable);
 
 			if (threaded_items.is_empty) {
-				stderr.printf ("[FRIDA-INJECTOR] No threaded items, performing bind operations\n");
+				Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] No threaded items, performing bind operations\n");
 				perform_bind_operations (buffer, symbols);
 			} else {
-				stderr.printf ("[FRIDA-INJECTOR] Using threaded items\n");
+				Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Using threaded items\n");
 			}
 
-			stderr.printf ("[FRIDA-INJECTOR] Uploading module to process\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Uploading module to process\n");
 			var gadget_port = yield upload (buffer, threaded_items.build (symbols), chained_fixups.build (),
 				new UploadSymbols.from_set (symbols), cancellable);
-			stderr.printf ("[FRIDA-INJECTOR] Module upload complete, gadget listening on port %u\n", gadget_port);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Module upload complete, gadget listening on port %u\n", gadget_port);
 
 			return new GadgetDetails (gadget_port);
 		}
 
 		private void perform_rebase_operations (Buffer buffer) throws GLib.Error {
-			stderr.printf ("[FRIDA-INJECTOR] Performing rebase operations on module buffer\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Performing rebase operations on module buffer\n");
 			GLib.Error? pending_error = null;
 			uint rebase_count = 0;
 
@@ -285,20 +285,20 @@ namespace Frida.Fruity.Injector {
 				uint64 address = buffer.read_pointer (offset);
 				uint64 rebased_address = address + rebase.slide;
 				buffer.write_pointer (offset, rebased_address);
-				//  stderr.printf ("[FRIDA-INJECTOR] Rebased address at offset 0x%zx: 0x%llx -> 0x%llx\n", 
+				//  Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Rebased address at offset 0x%zx: 0x%llx -> 0x%llx\n", 
 				//  	offset, address, rebased_address);
 
 				return true;
 			});
 
-			stderr.printf ("[FRIDA-INJECTOR] Performed %u rebase operations\n", rebase_count);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Performed %u rebase operations\n", rebase_count);
 			if (pending_error != null)
 				throw pending_error;
 		}
 
 		private void collect_needed_symbols_and_threaded_items (Buffer buffer, SymbolQueryBuilder symbols_needed,
 				ThreadedItemsBuilder threaded_items) throws GLib.Error {
-			stderr.printf ("[FRIDA-INJECTOR] Collecting needed symbols and threaded items\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Collecting needed symbols and threaded items\n");
 			Gum.Address slide = module.slide;
 			bool have_threaded_items = false;
 			GLib.Error? pending_error = null;
@@ -353,7 +353,7 @@ namespace Frida.Fruity.Injector {
 			if (pending_error != null)
 				throw pending_error;
 			lazy_bind_count = bind_count - pre_lazy_count;
-			stderr.printf ("[FRIDA-INJECTOR] Processed %u regular binds and %u lazy binds\n", 
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Processed %u regular binds and %u lazy binds\n", 
 				pre_lazy_count, lazy_bind_count);
 		}
 
@@ -396,21 +396,21 @@ namespace Frida.Fruity.Injector {
 
 		private async uint16 upload (Buffer buffer, ThreadedItems threaded_items, ChainedFixups chained_fixups,
 				UploadSymbols symbols, Cancellable? cancellable) throws GLib.Error {
-			stderr.printf ("[FRIDA-INJECTOR] Starting upload process\n");
-			stderr.printf ("[FRIDA-INJECTOR] Buffer size: %llu bytes\n", (uint64) buffer.bytes.length);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Starting upload process\n");
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Buffer size: %llu bytes\n", (uint64) buffer.bytes.length);
 			uint64 code = jit_page;
-			stderr.printf ("[FRIDA-INJECTOR] Writing upload listener code to JIT page at 0x%llx\n", code);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Writing upload listener code to JIT page at 0x%llx\n", code);
 			yield lldb.write_byte_array (code, new Bytes.static (UPLOAD_LISTENER_CODE), cancellable);
 
 			const uint64 rx_buffer_size = 1024 * 1024;
-			stderr.printf ("[FRIDA-INJECTOR] Using RX buffer size: %llu bytes\n", rx_buffer_size);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Using RX buffer size: %llu bytes\n", rx_buffer_size);
 
 			uint64 args = scratch_page;
 			var args_builder = lldb.make_buffer_builder ();
 
 			string range_param = ("frida_dylib_range=0x%" + uint64.FORMAT_MODIFIER + "x,0x%" + size_t.FORMAT_MODIFIER + "x")
 				.printf (module.base_address, module_size);
-			stderr.printf ("[FRIDA-INJECTOR] Module range parameter: %s\n", range_param);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Module range parameter: %s\n", range_param);
 
 			var config = new Json.Builder ();
 			config
@@ -431,8 +431,8 @@ namespace Frida.Fruity.Injector {
 				.end_object ();
 			string raw_config = Json.to_string (config.get_root (), false);
 			string config_param = "frida_gadget_config=" + Base64.encode (raw_config.data);
-			stderr.printf ("[FRIDA-INJECTOR] Gadget config: %s\n", raw_config);
-			stderr.printf ("[FRIDA-INJECTOR] Config parameter length: %d\n", config_param.length);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Gadget config: %s\n", raw_config);
+			Frida.Fruity.Debug.log ("[FRIDA-INJECTOR] Config parameter length: %d\n", config_param.length);
 
 			var apple_strv_builder = new StringVectorBuilder (args_builder);
 

@@ -51,23 +51,23 @@ namespace Frida.Fruity {
 		}
 
 		public void ensure_open (Cancellable? cancellable = null) throws Error {
-			stderr.printf ("[FRIDA-USB] Ensuring USB device is open for UDID: %s\n", udid);
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Ensuring USB device is open for UDID: %s\n", udid);
 			if (_handle != null) {
-				stderr.printf ("[FRIDA-USB] USB device already open\n");
+				Frida.Fruity.Debug.log ("[FRIDA-USB] USB device already open\n");
 				return;
 			}
 			Usb.check (_raw_device.open (out _handle), "Failed to open USB device");
-			stderr.printf ("[FRIDA-USB] USB device opened successfully\n");
+			Frida.Fruity.Debug.log ("[FRIDA-USB] USB device opened successfully\n");
 		}
 
 		public async void close (Cancellable? cancellable) throws IOError {
-			stderr.printf ("[FRIDA-USB] Closing USB device with UDID: %s\n", udid);
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Closing USB device with UDID: %s\n", udid);
 			if (num_pending_operations != 0) {
-				stderr.printf ("[FRIDA-USB] Waiting for %u pending operations to complete\n", num_pending_operations);
+				Frida.Fruity.Debug.log ("[FRIDA-USB] Waiting for %u pending operations to complete\n", num_pending_operations);
 				pending_operations_completed = new Promise<bool> ();
 				try {
 					yield pending_operations_completed.future.wait_async (cancellable);
-					stderr.printf ("[FRIDA-USB] All pending operations completed\n");
+					Frida.Fruity.Debug.log ("[FRIDA-USB] All pending operations completed\n");
 				} catch (Error e) {
 					assert_not_reached ();
 				}
@@ -76,11 +76,11 @@ namespace Frida.Fruity {
 
 			_handle = null;
 			_raw_device = null;
-			stderr.printf ("[FRIDA-USB] USB device closed successfully\n");
+			Frida.Fruity.Debug.log ("[FRIDA-USB] USB device closed successfully\n");
 		}
 
 		public async bool maybe_modeswitch (Cancellable? cancellable) throws Error, IOError {
-			stderr.printf ("[FRIDA-USB] Checking for modeswitch on device with UDID: %s\n", udid);
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Checking for modeswitch on device with UDID: %s\n", udid);
 			uint8 current_mode[4];
 			var n = yield control_transfer (
 				LibUSB.RequestRecipient.DEVICE | LibUSB.RequestType.VENDOR | LibUSB.EndpointDirection.IN,
@@ -91,14 +91,14 @@ namespace Frida.Fruity {
 				1000,
 				cancellable);
 			string mode = parse_mode (current_mode[:n]);
-			stderr.printf ("[FRIDA-USB] Current device mode: %s\n", mode);
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Current device mode: %s\n", mode);
 			bool is_initial_mode = mode == MODE_INITIAL_UNTETHERED || mode == MODE_INITIAL_TETHERED;
 			if (!is_initial_mode) {
-				stderr.printf ("[FRIDA-USB] Device not in initial mode, no modeswitch needed\n");
+				Frida.Fruity.Debug.log ("[FRIDA-USB] Device not in initial mode, no modeswitch needed\n");
 				return false;
 			}
 
-			stderr.printf ("[FRIDA-USB] Device in initial mode, performing modeswitch\n");
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Device in initial mode, performing modeswitch\n");
 			uint8 set_mode_result[1];
 			var set_mode_result_size = yield control_transfer (
 				LibUSB.RequestRecipient.DEVICE | LibUSB.RequestType.VENDOR | LibUSB.EndpointDirection.IN,
@@ -108,13 +108,13 @@ namespace Frida.Fruity {
 				set_mode_result,
 				1000,
 				cancellable);
-			stderr.printf ("[FRIDA-USB] Modeswitch result size: %zu, result: 0x%02x\n", set_mode_result_size, set_mode_result[0]);
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Modeswitch result size: %zu, result: 0x%02x\n", set_mode_result_size, set_mode_result[0]);
 			if (set_mode_result_size != 1 || set_mode_result[0] != 0x00) {
-				stderr.printf ("[FRIDA-USB] Modeswitch failed\n");
+				Frida.Fruity.Debug.log ("[FRIDA-USB] Modeswitch failed\n");
 				return false;
 			}
 
-			stderr.printf ("[FRIDA-USB] Modeswitch completed successfully\n");
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Modeswitch completed successfully\n");
 			return true;
 		}
 
@@ -200,7 +200,7 @@ namespace Frida.Fruity {
 
 		public async size_t control_transfer (uint8 request_type, uint8 request, uint16 val, uint16 index, uint8[] buffer,
 				uint timeout, Cancellable? cancellable) throws Error, IOError {
-			stderr.printf ("[FRIDA-USB] Control transfer - type: 0x%02x, request: 0x%02x, val: 0x%04x, index: 0x%04x, buffer size: %u\n", 
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Control transfer - type: 0x%02x, request: 0x%02x, val: 0x%04x, index: 0x%04x, buffer size: %u\n", 
 					request_type, request, val, index, buffer.length);
 			var op = backend.allocate_usb_operation ();
 			unowned LibUSB.Transfer transfer = op.transfer;
@@ -241,7 +241,7 @@ namespace Frida.Fruity {
 
 		public async size_t bulk_transfer (uint8 endpoint, uint8[] buffer, uint timeout, Cancellable? cancellable)
 				throws Error, IOError {
-			stderr.printf ("[FRIDA-USB] Bulk transfer - endpoint: 0x%02x, buffer size: %u, timeout: %u\n", 
+			Frida.Fruity.Debug.log ("[FRIDA-USB] Bulk transfer - endpoint: 0x%02x, buffer size: %u, timeout: %u\n", 
 					endpoint, buffer.length, timeout);
 			var op = backend.allocate_usb_operation ();
 			unowned LibUSB.Transfer transfer = op.transfer;

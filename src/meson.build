@@ -516,6 +516,7 @@ if have_fruity_backend
     'fruity' / 'network-stack.vala',
     'fruity' / 'usb.vala',
     'fruity' / 'ncm.vala',
+    'fruity' / 'debug.vala',
   ]
 
   if host_os_family == 'windows'

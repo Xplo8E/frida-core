@@ -19,7 +19,7 @@ namespace Frida.Fruity {
 		private const uint16 LOCKDOWN_PORT = 62078;
 
 		public LockdownClient (IOStream stream) {
-			stderr.printf ("[FRIDA-LOCKDOWN] Creating lockdown client\n");
+			Frida.Fruity.Debug.log ("[FRIDA-LOCKDOWN] Creating lockdown client\n");
 			Object (service: new PlistServiceClient (stream));
 		}
 
@@ -29,7 +29,7 @@ namespace Frida.Fruity {
 
 		public static async LockdownClient open (UsbmuxDevice device, Cancellable? cancellable = null)
 				throws LockdownError, IOError {
-			stderr.printf ("[FRIDA-LOCKDOWN] Opening lockdown client for device: %s\n", device.udid);
+			Frida.Fruity.Debug.log ("[FRIDA-LOCKDOWN] Opening lockdown client for device: %s\n", device.udid);
 			try {
 				var usbmux = yield UsbmuxClient.open (cancellable);
 

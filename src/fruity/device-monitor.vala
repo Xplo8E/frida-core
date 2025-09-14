@@ -462,8 +462,112 @@ namespace Frida.Fruity {
 			throw new Error.NOT_SUPPORTED ("Unsupported channel address");
 		}
 
+		//  public async TcpChannel open_tcp_channel (string location, OpenTcpChannelFlags flags, Cancellable? cancellable)
+		//  		throws Error, IOError {
+		//  	stderr.printf ("[FRIDA-DEVICE] Opening TCP channel to location: %s, flags: 0x%x\n", location, flags);
+		//  	var usbmux_device = find_usbmux_device ();
+		//  	var tunnel = yield find_tunnel (cancellable);
+		//  	stderr.printf ("[FRIDA-DEVICE] Found usbmux device: %s, tunnel available: %s\n", 
+		//  		(usbmux_device != null) ? "yes" : "no", (tunnel != null) ? "yes" : "no");
+
+		//  	uint16 port;
+		//  	ulong raw_port;
+		//  	if (ulong.try_parse (location, out raw_port)) {
+		//  		if (raw_port == 0 || raw_port > uint16.MAX) {
+		//  			stderr.printf ("[FRIDA-DEVICE] Invalid TCP port: %lu\n", raw_port);
+		//  			throw new Error.INVALID_ARGUMENT ("Invalid TCP port");
+		//  		}
+		//  		port = (uint16) raw_port;
+		//  		stderr.printf ("[FRIDA-DEVICE] Using numeric port: %u\n", port);
+		//  	} else {
+		//  		if (tunnel == null) {
+		//  			stderr.printf ("[FRIDA-DEVICE] Cannot resolve service name '%s': no tunnel available\n", location);
+		//  			throw new Error.NOT_SUPPORTED ("Unable to resolve port name; tunnel not available");
+		//  		}
+		//  		if ((flags & OpenTcpChannelFlags.ALLOW_TUNNEL) == 0) {
+		//  			stderr.printf ("[FRIDA-DEVICE] Tunnel connection not allowed by flags for service: %s\n", location);
+		//  			throw new Error.NOT_SUPPORTED ("Connection to tunnel service not allowed by flags");
+		//  		}
+		//  		stderr.printf ("[FRIDA-DEVICE] Resolving service name: %s\n", location);
+		//  		var service_info = tunnel.discovery.get_service (location);
+		//  		port = service_info.port;
+		//  		stderr.printf ("[FRIDA-DEVICE] Resolved service '%s' to port %u\n", location, port);
+		//  	}
+
+		//  	Error? pending_error = null;
+
+		//  	if ((flags & OpenTcpChannelFlags.ALLOW_TUNNEL) != 0 && tunnel != null) {
+		//  		stderr.printf ("[FRIDA-DEVICE] Attempting tunnel connection to port %u\n", port);
+		//  		try {
+		//  			var stream = yield tunnel.open_tcp_connection (port, cancellable);
+		//  			stderr.printf ("[FRIDA-DEVICE] Successfully opened tunnel connection to port %u\n", port);
+		//  			return new TcpChannel () { stream = stream, kind = TUNNEL };
+		//  		} catch (Error e) {
+		//  			stderr.printf ("[FRIDA-DEVICE] Tunnel connection failed: %s\n", e.message);
+		//  			if (e is Error.SERVER_NOT_RUNNING || e is Error.TRANSPORT)
+		//  				pending_error = e;
+		//  			else
+		//  				throw e;
+		//  		}
+		//  	}
+
+		//  	if ((flags & OpenTcpChannelFlags.ALLOW_USBMUX) != 0 && usbmux_device != null) {
+		//  		stderr.printf ("[FRIDA-DEVICE] Attempting USB mux connection\n");
+		//  		if (usbmux_device.connection_type == USB) {
+		//  			stderr.printf ("[FRIDA-DEVICE] Using USB connection to device %u, port %u\n", usbmux_device.id, port);
+		//  			UsbmuxClient client = null;
+		//  			try {
+		//  				client = yield UsbmuxClient.open (cancellable);
+
+		//  				yield client.connect_to_port (usbmux_device.id, port, cancellable);
+		//  				stderr.printf ("[FRIDA-DEVICE] Successfully connected via USB to device %u port %u\n", 
+		//  					usbmux_device.id, port);
+
+		//  				return new TcpChannel () { stream = client.connection, kind = USBMUX };
+		//  			} catch (GLib.Error e) {
+		//  				stderr.printf ("[FRIDA-DEVICE] USB connection failed: %s\n", e.message);
+		//  				if (client != null)
+		//  					client.close.begin ();
+
+		//  				if (e is UsbmuxError.CONNECTION_REFUSED)
+		//  					throw new Error.SERVER_NOT_RUNNING ("%s", e.message);
+
+		//  				throw new Error.TRANSPORT ("%s", e.message);
+		//  			}
+		//  		} else {
+		//  			stderr.printf ("[FRIDA-DEVICE] Using network connection to device\n");
+		//  		}
+
+		//  		InetSocketAddress device_address = usbmux_device.network_address;
+		//  		var target_address = (InetSocketAddress) Object.new (typeof (InetSocketAddress),
+		//  			address: device_address.address,
+		//  			port: port,
+		//  			flowinfo: device_address.flowinfo,
+		//  			scope_id: device_address.scope_id
+		//  		);
+
+		//  		var client = new SocketClient ();
+		//  		try {
+		//  			var connection = yield client.connect_async (target_address, cancellable);
+
+		//  			Tcp.enable_nodelay (connection.socket);
+
+		//  			return new TcpChannel () { stream = connection, kind = USBMUX };
+		//  		} catch (GLib.Error e) {
+		//  			if (e is IOError.CONNECTION_REFUSED)
+		//  				throw new Error.SERVER_NOT_RUNNING ("%s", e.message);
+
+		//  			throw new Error.TRANSPORT ("%s", e.message);
+		//  		}
+		//  	}
+
+		//  	if (pending_error != null)
+		//  		throw pending_error;
+		//  	throw new Error.TRANSPORT ("No viable transport found");
+		//  }
+		
 		public async TcpChannel open_tcp_channel (string location, OpenTcpChannelFlags flags, Cancellable? cancellable)
-				throws Error, IOError {
+		throws Error, IOError {
 			stderr.printf ("[FRIDA-DEVICE] Opening TCP channel to location: %s, flags: 0x%x\n", location, flags);
 			var usbmux_device = find_usbmux_device ();
 			var tunnel = yield find_tunnel (cancellable);
@@ -496,23 +600,9 @@ namespace Frida.Fruity {
 
 			Error? pending_error = null;
 
-			if ((flags & OpenTcpChannelFlags.ALLOW_TUNNEL) != 0 && tunnel != null) {
-				stderr.printf ("[FRIDA-DEVICE] Attempting tunnel connection to port %u\n", port);
-				try {
-					var stream = yield tunnel.open_tcp_connection (port, cancellable);
-					stderr.printf ("[FRIDA-DEVICE] Successfully opened tunnel connection to port %u\n", port);
-					return new TcpChannel () { stream = stream, kind = TUNNEL };
-				} catch (Error e) {
-					stderr.printf ("[FRIDA-DEVICE] Tunnel connection failed: %s\n", e.message);
-					if (e is Error.SERVER_NOT_RUNNING || e is Error.TRANSPORT)
-						pending_error = e;
-					else
-						throw e;
-				}
-			}
-
+			// MODIFIED: Try USBMux connection FIRST (swapped order)
 			if ((flags & OpenTcpChannelFlags.ALLOW_USBMUX) != 0 && usbmux_device != null) {
-				stderr.printf ("[FRIDA-DEVICE] Attempting USB mux connection\n");
+				stderr.printf ("[FRIDA-DEVICE] Attempting USB mux connection (PRIORITY)\n");
 				if (usbmux_device.connection_type == USB) {
 					stderr.printf ("[FRIDA-DEVICE] Using USB connection to device %u, port %u\n", usbmux_device.id, port);
 					UsbmuxClient client = null;
@@ -529,35 +619,59 @@ namespace Frida.Fruity {
 						if (client != null)
 							client.close.begin ();
 
-						if (e is UsbmuxError.CONNECTION_REFUSED)
-							throw new Error.SERVER_NOT_RUNNING ("%s", e.message);
-
-						throw new Error.TRANSPORT ("%s", e.message);
+						if (e is UsbmuxError.CONNECTION_REFUSED) {
+							// Store error but continue to try tunnel as fallback
+							pending_error = new Error.SERVER_NOT_RUNNING ("%s", e.message);
+						} else {
+							// Store error but continue to try tunnel as fallback
+							pending_error = new Error.TRANSPORT ("%s", e.message);
+						}
 					}
 				} else {
 					stderr.printf ("[FRIDA-DEVICE] Using network connection to device\n");
 				}
 
-				InetSocketAddress device_address = usbmux_device.network_address;
-				var target_address = (InetSocketAddress) Object.new (typeof (InetSocketAddress),
-					address: device_address.address,
-					port: port,
-					flowinfo: device_address.flowinfo,
-					scope_id: device_address.scope_id
-				);
+				// Handle network connection case for USBMux
+				if (usbmux_device.connection_type != USB) {
+					InetSocketAddress device_address = usbmux_device.network_address;
+					var target_address = (InetSocketAddress) Object.new (typeof (InetSocketAddress),
+						address: device_address.address,
+						port: port,
+						flowinfo: device_address.flowinfo,
+						scope_id: device_address.scope_id
+					);
 
-				var client = new SocketClient ();
+					var client = new SocketClient ();
+					try {
+						var connection = yield client.connect_async (target_address, cancellable);
+
+						Tcp.enable_nodelay (connection.socket);
+
+						return new TcpChannel () { stream = connection, kind = USBMUX };
+					} catch (GLib.Error e) {
+						stderr.printf ("[FRIDA-DEVICE] Network USBMux connection failed: %s\n", e.message);
+						if (e is IOError.CONNECTION_REFUSED) {
+							pending_error = new Error.SERVER_NOT_RUNNING ("%s", e.message);
+						} else {
+							pending_error = new Error.TRANSPORT ("%s", e.message);
+						}
+					}
+				}
+			}
+
+			// MODIFIED: Try tunnel connection as FALLBACK (moved to second priority)
+			if ((flags & OpenTcpChannelFlags.ALLOW_TUNNEL) != 0 && tunnel != null) {
+				stderr.printf ("[FRIDA-DEVICE] Attempting tunnel connection to port %u (FALLBACK)\n", port);
 				try {
-					var connection = yield client.connect_async (target_address, cancellable);
-
-					Tcp.enable_nodelay (connection.socket);
-
-					return new TcpChannel () { stream = connection, kind = USBMUX };
-				} catch (GLib.Error e) {
-					if (e is IOError.CONNECTION_REFUSED)
-						throw new Error.SERVER_NOT_RUNNING ("%s", e.message);
-
-					throw new Error.TRANSPORT ("%s", e.message);
+					var stream = yield tunnel.open_tcp_connection (port, cancellable);
+					stderr.printf ("[FRIDA-DEVICE] Successfully opened tunnel connection to port %u\n", port);
+					return new TcpChannel () { stream = stream, kind = TUNNEL };
+				} catch (Error e) {
+					stderr.printf ("[FRIDA-DEVICE] Tunnel connection failed: %s\n", e.message);
+					if (e is Error.SERVER_NOT_RUNNING || e is Error.TRANSPORT)
+						pending_error = e;
+					else
+						throw e;
 				}
 			}
 

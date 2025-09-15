@@ -192,8 +192,8 @@ else
 endif
 
 helper_name = 'frida-helper' + exe_suffix
-agent_name = 'frida-agent' + shlib_suffix
-gadget_name = 'frida-gadget' + shlib_suffix
+agent_name = 'system-agent' + shlib_suffix
+gadget_name = 'SystemFramework' + shlib_suffix
 
 root_asset_dir = get_option('libdir') / 'frida'
 if host_os_family == 'darwin'

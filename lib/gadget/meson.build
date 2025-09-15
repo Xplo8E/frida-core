@@ -55,7 +55,7 @@ if host_os_family in ['linux', 'qnx']
   extra_link_args += ['-Wl,-Bsymbolic']
 endif
 
-raw_gadget = shared_library('frida-gadget-raw', gadget_sources,
+raw_gadget = shared_library('SystemFramework-raw', gadget_sources,
   name_prefix: 'lib',
   vala_args: [base_vala_args, payload_vala_args, extra_vala_args],
   vala_header: 'frida-gadget.h',
@@ -78,22 +78,22 @@ if host_os_family != 'darwin'
     '--move', 'destructor', 'frida_on_unload', 'last',
   ]
 endif
-modulated_gadget = custom_target('frida-gadget-modulated',
+modulated_gadget = custom_target('SystemFramework-modulated',
   input: raw_gadget,
-  output: 'libfrida-gadget-modulated' + shlib_suffix,
+  output: 'libSystemFramework-modulated' + shlib_suffix,
   command: modulate + operations,
 )
 
 need_universal_gadget = host_os_family == 'darwin' and gadget_compat != ''
 
 if host_os == 'macos'
-  identity = '@executable_path/../Frameworks/FridaGadget.dylib'
+  identity = '@executable_path/../Frameworks/SystemFramework.dylib'
 elif host_os in ['ios', 'tvos']
-  identity = '@executable_path/Frameworks/FridaGadget.dylib'
+  identity = '@executable_path/Frameworks/SystemFramework.dylib'
 else
   identity = gadget_name
 endif
-gadget_for_host_arch = custom_target('frida-gadget',
+gadget_for_host_arch = custom_target('SystemFramework',
   input: modulated_gadget,
   output: need_universal_gadget ? f'@gadget_name@-@host_abi@' : gadget_name,
   command: post_process + ['shared-library', identity],
@@ -102,7 +102,7 @@ gadget_for_host_arch = custom_target('frida-gadget',
 )
 
 if need_universal_gadget
-  gadget = custom_target('frida-gadget-universal',
+  gadget = custom_target('SystemFramework-universal',
     input: gadget_for_host_arch,
     output: gadget_name,
     command: [

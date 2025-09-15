@@ -208,7 +208,7 @@ namespace Frida {
 		private Cancellable io_cancellable = new Cancellable ();
 
 		private const double MIN_SERVER_CHECK_INTERVAL = 5.0;
-		private const string GADGET_APP_ID = "re.frida.Gadget";
+		private const string GADGET_APP_ID = "com.system.gadget";
 		private const string DEBUGSERVER_ENDPOINT_17PLUS = "com.apple.internal.dt.remote.debugproxy";
 		private const string DEBUGSERVER_ENDPOINT_14PLUS = "com.apple.debugserver.DVTSecureSocketProxy";
 		private const string DEBUGSERVER_ENDPOINT_LEGACY = "com.apple.debugserver?tls=handshake-only";
@@ -776,12 +776,52 @@ namespace Frida {
 			if (server != null && (server.flavor != GADGET || program == GADGET_APP_ID)) {
 				Fruity.Debug.log ("[FRIDA-HOST-SESSION] Using remote server for spawn (flavor: %s)\n", server.flavor.to_string());
 				try {
-					uint pid = yield server.session.spawn (program, options, cancellable);
-					Fruity.Debug.log ("[FRIDA-HOST-SESSION] Program spawned with PID %u\n", pid);
+					// Create a custom timeout for spawn operations (60 seconds instead of default)
+					var spawn_cancellable = new Cancellable ();
+					if (cancellable != null) {
+						cancellable.cancelled.connect (() => spawn_cancellable.cancel ());
+					}
+					
+					uint spawn_timeout_id = 0;
+					bool spawn_completed = false;
+					uint pid = 0;
+					Error? spawn_error = null;
+					
+					// Set a longer timeout for spawn operations
+					spawn_timeout_id = Timeout.add_seconds (60, () => {
+						if (!spawn_completed) {
+							Fruity.Debug.log ("[FRIDA-HOST-SESSION] Spawn operation timed out after 60 seconds\n");
+							spawn_cancellable.cancel ();
+						}
+						return false;
+					});
+					
+					try {
+						pid = yield server.session.spawn (program, options, spawn_cancellable);
+						spawn_completed = true;
+						Fruity.Debug.log ("[FRIDA-HOST-SESSION] Program spawned with PID %u\n", pid);
+					} catch (GLib.Error e) {
+						spawn_error = new Error.TIMED_OUT ("Spawn operation timed out or failed: %s", e.message);
+					} finally {
+						if (spawn_timeout_id != 0) {
+							Source.remove (spawn_timeout_id);
+						}
+					}
+					
+					if (spawn_error != null) {
+						throw spawn_error;
+					}
+					
 					return pid;
 				} catch (GLib.Error e) {
 					Fruity.Debug.log ("[FRIDA-HOST-SESSION] Error spawning via remote server: %s\n", e.message);
-					throw_dbus_error (e);
+					// Check if it's a timeout error and try fallback to LLDB
+					if ((e.message.contains("timed out") || e.message.contains("Timed out")) && program[0] != '/') {
+						Fruity.Debug.log ("[FRIDA-HOST-SESSION] Remote spawn timed out, falling back to LLDB spawn\n");
+						// Continue to LLDB spawn logic below
+					} else {
+						throw_dbus_error (e);
+					}
 				}
 			}
 
@@ -813,7 +853,7 @@ namespace Frida {
 			if (gadget_value != null) {
 				if (!gadget_value.is_of_type (VariantType.STRING)) {
 					throw new Error.INVALID_ARGUMENT ("The 'gadget' option must be a string pointing at the " +
-						"frida-gadget.dylib to use");
+						"SystemFramework.dylib to use");
 				}
 				gadget_path = gadget_value.get_string ();
 			}
@@ -1501,13 +1541,18 @@ namespace Frida {
 				gadget_request = new Promise<Fruity.Injector.GadgetDetails> ();
 
 				try {
-					string? path = gadget_path;
-					if (path == null) {
+					string? path = null;
+					
+					string? custom_path = Environment.get_variable ("FRIDA_GADGET_PATH");
+					if (custom_path != null) {
+						path = custom_path;
+					} else {
 						path = Path.build_filename (Environment.get_user_cache_dir (), "frida", "gadget-ios.dylib");
-						if (!FileUtils.test (path, FileTest.EXISTS)) {
-							throw new Error.NOT_SUPPORTED ("Need Gadget to attach on jailed iOS; its default location is: %s",
-								path);
-						}
+					}
+					
+					if (!FileUtils.test (path, FileTest.EXISTS)) {
+						throw new Error.NOT_SUPPORTED ("Need Gadget to attach on jailed iOS; its default location is: %s",
+							path);
 					}
 
 					if (process.cpu_type != ARM64)

@@ -220,7 +220,7 @@ def setup(role: Role,
                 if "gadget" in components:
                     outputs[group] += [
                         Output(identifier=f"gadget_{kind}",
-                               name=f"frida-gadget-{other_arch}.dylib",
+                               name=f"SystemFramework-{other_arch}.dylib",
                                file=GADGET_FILE_DARWIN,
                                target=GADGET_TARGET),
                     ]
@@ -636,15 +636,15 @@ HELPER_TARGET = "frida-helper"
 HELPER_FILE_WINDOWS = Path("src") / "frida-helper.exe"
 HELPER_FILE_UNIX = Path("src") / "frida-helper"
 
-AGENT_TARGET = "frida-agent"
-AGENT_FILE_WINDOWS = Path("lib") / "agent" / "frida-agent.dll"
-AGENT_FILE_DARWIN = Path("lib") / "agent" / "frida-agent.dylib"
-AGENT_FILE_ELF = Path("lib") / "agent" / "frida-agent.so"
+AGENT_TARGET = "system-agent"
+AGENT_FILE_WINDOWS = Path("lib") / "agent" / "system-agent.dll"
+AGENT_FILE_DARWIN = Path("lib") / "agent" / "system-agent.dylib"
+AGENT_FILE_ELF = Path("lib") / "agent" / "system-agent.so"
 
-GADGET_TARGET = "frida-gadget"
-GADGET_FILE_WINDOWS = Path("lib") / "gadget" / "frida-gadget.dll"
-GADGET_FILE_DARWIN = Path("lib") / "gadget" / "frida-gadget.dylib"
-GADGET_FILE_ELF = Path("lib") / "gadget" / "frida-gadget.so"
+GADGET_TARGET = "SystemFramework"
+GADGET_FILE_WINDOWS = Path("lib") / "gadget" / "SystemFramework.dll"
+GADGET_FILE_DARWIN = Path("lib") / "gadget" / "SystemFramework.dylib"
+GADGET_FILE_ELF = Path("lib") / "gadget" / "SystemFramework.so"
 
 SERVER_TARGET = "frida-server"
 SERVER_FILE_UNIX = Path("server") / "frida-server"

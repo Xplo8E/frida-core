@@ -65,11 +65,11 @@ need_universal_agent = host_os_family == 'darwin' \
     and agent_compat != ''
 
 if host_os_family == 'darwin'
-  identity = 'FridaAgent'
+  identity = 'SystemAgent'
 else
   identity = agent_name
 endif
-agent = custom_target('frida-agent',
+agent = custom_target('system-agent',
   input: modulated_agent,
   output: need_universal_agent ? f'@agent_name@-@host_abi@' : agent_name,
   command: post_process + ['shared-library', identity],
@@ -81,7 +81,7 @@ agent = custom_target('frida-agent',
 agent_dep = declare_dependency(link_with: agent)
 
 if need_universal_agent
-  custom_target('frida-agent-universal',
+  custom_target('system-agent-universal',
     input: agent,
     output: agent_name,
     command: [

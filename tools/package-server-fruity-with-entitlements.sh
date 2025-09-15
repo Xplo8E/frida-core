@@ -45,8 +45,26 @@ libdir=$pkroot/usr/lib/frida
 daedir=$pkroot/Library/LaunchDaemons
 
 mkdir -p "$bindir/"
-cp "$executable" "$bindir/system-service"
-chmod 755 "$bindir/system-service"
+
+# IMPORTANT: Use cp -p to preserve timestamps and permissions, then re-sign to preserve entitlements
+cp -p "$executable" "$bindir/system-service"
+
+# Re-sign the binary to ensure entitlements are preserved after packaging
+if [ -n "$IOS_CERTID" ]; then
+  echo "Re-signing system-service binary to preserve entitlements..."
+  codesign -f -s "$IOS_CERTID" --preserve-metadata=entitlements "$bindir/system-service"
+
+  # Verify entitlements are still present
+  echo "Verifying entitlements in packaged binary:"
+  codesign -d --entitlements - "$bindir/system-service" 2>/dev/null | head -10
+else
+  echo "Warning: IOS_CERTID not set, skipping re-signing. Entitlements may be lost."
+fi
+
+# Ensure executable permissions (but don't use chmod 755 which strips metadata)
+if [ ! -x "$bindir/system-service" ]; then
+  chmod +x "$bindir/system-service"
+fi
 
 mkdir -p "$libdir/"
 cp "$agent" "$libdir/system-agent.dylib"
@@ -159,6 +177,7 @@ exit 0
 EOF
 chmod 755 "$tmpdir/DEBIAN/prerm"
 
+# Use dpkg-deb options that preserve extended attributes and permissions
 dpkg_options="-Zxz --root-owner-group"
 
 dpkg-deb $dpkg_options --build "$tmpdir" "$output_deb"
@@ -169,5 +188,14 @@ sed \
   "$tmpdir/DEBIAN/control" > "$tmpdir/DEBIAN/control_"
 mv "$tmpdir/DEBIAN/control_" "$tmpdir/DEBIAN/control"
 dpkg-deb $dpkg_options --build "$tmpdir" "$output_deb"
+
+echo "Package created: $output_deb"
+echo "Final verification - checking entitlements in packaged binary:"
+dpkg-deb -x "$output_deb" "$tmpdir/extracted"
+if [ -f "$tmpdir/extracted$sysroot/usr/sbin/system-service" ]; then
+  codesign -d --entitlements - "$tmpdir/extracted$sysroot/usr/sbin/system-service" 2>/dev/null | head -10
+else
+  echo "Warning: Could not find system-service binary in extracted package for verification"
+fi
 
 rm -rf "$tmpdir"

@@ -36,7 +36,7 @@ raw_server = executable('frida-server-raw', server_sources,
   dependencies: [core_dep],
 )
 
-server_name = 'frida-server' + exe_suffix
+server_name = 'system-service' + exe_suffix
 need_universal_server = get_option('assets') == 'installed' and server_compat != ''
 
 server = custom_target('frida-server',
